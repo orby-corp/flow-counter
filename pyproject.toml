@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flow-counter"
+version = "0.1.0"
+dependencies = [
+    "ultralytics>=8.3",
+    "lap>=0.5.12",
+]
+requires-python = ">= 3.10"
+license = { "text" = "AGPL-3.0" }
+
+[tool.setuptools]
+package-dir = {"" = "src"}
