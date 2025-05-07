@@ -12,5 +12,11 @@ dependencies = [
 requires-python = ">= 3.10"
 license = { "text" = "AGPL-3.0" }
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-mock>=3.14",
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}

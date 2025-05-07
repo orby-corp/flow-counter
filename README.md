@@ -3,9 +3,10 @@ This is a package that counts the number of objects crossing a specified line in
 
 ## Installation
 ```bash
-git clone https://github.com/mhal-teddy/flow-counter.git
+git clone https://github.com/orby-corp/flow-counter.git
 cd flow-counter
 pip install -e .
+# pip install -e .[dev]  # For development
 ```
 
 ## Python
