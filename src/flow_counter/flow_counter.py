@@ -13,6 +13,14 @@ class FlowCounter:
         :param model_path: Path to the YOLO model file.
         """
         self.model = YOLO(model_path)
+        self._reset()
+
+    def _reset(self):
+        # Set of already-counted object IDs.
+        self.counted_ids: set[int] = set()
+
+        # Dictionary to store class-wise counts.
+        self.cls_counts: dict[str, int] = {}
 
     def _open_video(self, input_path: str) -> tuple[cv2.VideoCapture, int, tuple[int, int]]:
         """
@@ -29,28 +37,29 @@ class FlowCounter:
     
     def _count_crossing_objects(
         self,
-        boxes: np.ndarray,
+        xyxys: np.ndarray,
         ids: np.ndarray,
         line: tuple[Point, Point],
-        counted_ids: set[int],
     ) -> int:
         """
         Count how many objects crossed a specific line.
 
-        :param boxes: Array of bounding boxes [[x1, y1, x2, y2], ...]
+        :param xyxys: Array of bounding boxes [[x1, y1, x2, y2], ...]
         :param ids: Array of object IDs correspoinding to the boxes.
         :param line: Line represented by two points (start, end).
-        :param counted_ids: Set of already-counted object IDs.
         :return Number of new objects crossing the line.
         """
         count = 0
-        for i, box in enumerate(boxes):
-            x1, y1, x2, y2 = map(int, box)
+        for i, xyxy in enumerate(xyxys):
+            x1, y1, x2, y2 = map(int, xyxy)
             box_id = int(ids[i])
 
-            if intersect((x1, y1), (x2, y2), line[0], line[1]) and box_id != -1 and box_id not in counted_ids:
+            if box_id == -1 or box_id in self.counted_ids:
+                continue
+
+            if intersect((x1, y1), (x2, y2), line[0], line[1]):
                 count += 1
-                counted_ids.add(box_id)
+                self.counted_ids.add(box_id)
         return count
     
     def _annotate_frame(self, frame: np.ndarray, line: tuple[Point, Point], counter: int) -> np.ndarray:
@@ -74,6 +83,7 @@ class FlowCounter:
         :param output_path: Path to the output video file (annotated).
         :param line: A tuple of two points defining the line ((x1, y1), (x2, y2))
         """
+        self._reset()
         cap, total_frames, frame_size = self._open_video(input_path)
 
         out = cv2.VideoWriter(
@@ -84,7 +94,6 @@ class FlowCounter:
         )
 
         counter = 0
-        counted_ids: set[int] = set()
         
         with tqdm(total=total_frames, desc=f"Processing {input_path}") as pbar:
             while cap.isOpened():
@@ -93,15 +102,14 @@ class FlowCounter:
                     break
 
                 results = self.model.track(frame, persist=True, verbose=False)
+                boxes = results[0].boxes
 
                 # [x1, y1, x2, y2] format
-                boxes = results[0].boxes.xyxy.cpu().numpy()
-                if results[0].boxes.id is None:
-                    ids = [-1] * len(boxes)
-                else:
-                    ids = results[0].boxes.id.cpu().numpy()
+                xyxys = boxes.xyxy.cpu().numpy()
+                ids = boxes.id.cpu().numpy() if boxes.id is not None else [-1] * len(boxes)
+                classes = boxes.cls.cpu().numpy()
 
-                counter += self._count_crossing_objects(boxes, ids, line, counted_ids)
+                counter += self._count_crossing_objects(boxes, ids, line)
 
                 annotated_frame = results[0].plot()
                 annotated_frame = self._annotate_frame(annotated_frame, line, counter)

@@ -27,14 +27,13 @@ def test_count_crossing_objects_counts_new_ids(
     """
     boxes = np.array([[10, 10, 20, 20]])
     ids = np.array([1])
-    counted_ids: set[int] = set()
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
 
-    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line, counted_ids)
+    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line)
 
     assert result == 1
-    assert 1 in counted_ids
+    assert 1 in flow_counter.counted_ids
 
 def test_count_crossing_objects_skips_non_intersection(
     mocker: MockerFixture, 
@@ -46,14 +45,13 @@ def test_count_crossing_objects_skips_non_intersection(
     """
     boxes = np.array([[10, 10, 20, 20]])
     ids = np.array([2])
-    counted_ids: set[int] = set()
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=False)
 
-    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line, counted_ids)
+    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line)
 
     assert result == 0
-    assert 2 not in counted_ids
+    assert 2 not in flow_counter.counted_ids
 
 def test_count_crossing_objects_skips_already_counted(
     mocker: MockerFixture, 
@@ -65,14 +63,14 @@ def test_count_crossing_objects_skips_already_counted(
     """
     boxes = np.array([[10, 10, 20, 20]])
     ids = np.array([3])
-    counted_ids: set[int] = {3}
+    flow_counter.counted_ids.add(3)
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
 
-    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line, counted_ids)
+    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line)
 
     assert result == 0
-    assert counted_ids == {3}
+    assert flow_counter.counted_ids == {3}
 
 def test_count_crossing_objects_skips_invalid_id(
     mocker: MockerFixture, 
@@ -84,11 +82,10 @@ def test_count_crossing_objects_skips_invalid_id(
     """
     boxes = np.array([[10, 10, 20, 20]])
     ids = np.array([-1])
-    counted_ids: set[int] = set()
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
 
-    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line, counted_ids)
+    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line)
 
     assert result == 0
-    assert counted_ids == set()
+    assert flow_counter.counted_ids == set()
