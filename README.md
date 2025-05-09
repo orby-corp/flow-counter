@@ -14,7 +14,11 @@ pip install -e .
 from flow_counter import FlowCounter
 
 fc = FlowCounter("yolo11n.pt")
+
+# Define the counting line as a tuple of two points ((x1, y1), (x2, y2))
 fc.object_counts("input.mp4", "output.mp4", ((100, 300), (800, 300)))
+
+print(fc.cls_counts)  # {"car": 3, "person": 2}
 ```
 
 ## License

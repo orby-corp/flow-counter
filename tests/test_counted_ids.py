@@ -1,21 +1,8 @@
 import numpy as np
-import pytest
 from pytest_mock import MockerFixture
 
 from flow_counter import FlowCounter
 from flow_counter.utils import Point
-
-@pytest.fixture
-def dummy_line() -> tuple[Point, Point]:
-    return ((0, 0), (100, 100))
-
-@pytest.fixture
-def flow_counter(mocker: MockerFixture) -> FlowCounter:
-    """
-    Returns a FlowCounter instance with a mocked YOLO model to avoid real model loading.
-    """
-    mock_yolo = mocker.patch("flow_counter.flow_counter.YOLO", autospec=True)
-    return FlowCounter("dummy_model.pt")
 
 def test_count_crossing_objects_counts_new_ids(
     mocker: MockerFixture, 
@@ -27,10 +14,11 @@ def test_count_crossing_objects_counts_new_ids(
     """
     boxes = np.array([[10, 10, 20, 20]])
     ids = np.array([1])
+    classes = np.array([0])
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
 
-    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line)
+    result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
     assert result == 1
     assert 1 in flow_counter.counted_ids
@@ -45,10 +33,11 @@ def test_count_crossing_objects_skips_non_intersection(
     """
     boxes = np.array([[10, 10, 20, 20]])
     ids = np.array([2])
+    classes = np.array([0])
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=False)
 
-    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line)
+    result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
     assert result == 0
     assert 2 not in flow_counter.counted_ids
@@ -64,10 +53,11 @@ def test_count_crossing_objects_skips_already_counted(
     boxes = np.array([[10, 10, 20, 20]])
     ids = np.array([3])
     flow_counter.counted_ids.add(3)
+    classes = np.array([0])
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
 
-    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line)
+    result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
     assert result == 0
     assert flow_counter.counted_ids == {3}
@@ -82,10 +72,11 @@ def test_count_crossing_objects_skips_invalid_id(
     """
     boxes = np.array([[10, 10, 20, 20]])
     ids = np.array([-1])
+    classes = np.array([0])
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
 
-    result = flow_counter._count_crossing_objects(boxes, ids, dummy_line)
+    result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
     assert result == 0
     assert flow_counter.counted_ids == set()

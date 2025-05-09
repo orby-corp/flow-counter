@@ -39,6 +39,7 @@ class FlowCounter:
         self,
         xyxys: np.ndarray,
         ids: np.ndarray,
+        classes: np.ndarray,
         line: tuple[Point, Point],
     ) -> int:
         """
@@ -46,20 +47,22 @@ class FlowCounter:
 
         :param xyxys: Array of bounding boxes [[x1, y1, x2, y2], ...]
         :param ids: Array of object IDs correspoinding to the boxes.
+        :param classes: Class IDs corresponding to the boxes.
         :param line: Line represented by two points (start, end).
         :return Number of new objects crossing the line.
         """
         count = 0
-        for i, xyxy in enumerate(xyxys):
+        for xyxy, box_id, cls_id in zip(xyxys, ids, classes):
             x1, y1, x2, y2 = map(int, xyxy)
-            box_id = int(ids[i])
 
             if box_id == -1 or box_id in self.counted_ids:
                 continue
 
             if intersect((x1, y1), (x2, y2), line[0], line[1]):
+                class_name = self.model.names[cls_id]
                 count += 1
                 self.counted_ids.add(box_id)
+                self.cls_counts[class_name] = self.cls_counts.get(class_name, 0) + 1
         return count
     
     def _annotate_frame(self, frame: np.ndarray, line: tuple[Point, Point], counter: int) -> np.ndarray:
@@ -109,7 +112,7 @@ class FlowCounter:
                 ids = boxes.id.cpu().numpy() if boxes.id is not None else [-1] * len(boxes)
                 classes = boxes.cls.cpu().numpy()
 
-                counter += self._count_crossing_objects(boxes, ids, line)
+                counter += self._count_crossing_objects(xyxys, ids, classes, line)
 
                 annotated_frame = results[0].plot()
                 annotated_frame = self._annotate_frame(annotated_frame, line, counter)

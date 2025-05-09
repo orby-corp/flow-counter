@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flow-counter"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
     "ultralytics>=8.3",
     "lap>=0.5.12",
