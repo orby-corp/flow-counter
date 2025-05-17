@@ -17,6 +17,7 @@ def test_count_crossing_objects_counts_new_ids(
     classes = np.array([0])
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
+    flow_counter.model.names = {0: "car"}
 
     result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
@@ -36,6 +37,7 @@ def test_count_crossing_objects_skips_non_intersection(
     classes = np.array([0])
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=False)
+    flow_counter.model.names = {0: "car"}
 
     result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
@@ -56,6 +58,7 @@ def test_count_crossing_objects_skips_already_counted(
     classes = np.array([0])
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
+    flow_counter.model.names = {0: "car"}
 
     result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
@@ -75,6 +78,7 @@ def test_count_crossing_objects_skips_invalid_id(
     classes = np.array([0])
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
+    flow_counter.model.names = {0: "car"}
 
     result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 

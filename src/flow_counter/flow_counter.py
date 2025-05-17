@@ -3,7 +3,8 @@ import numpy as np
 from tqdm import tqdm
 from ultralytics import YOLO
 
-from flow_counter.utils import Point, intersect
+from flow_counter.union_find import DictUnionFind
+from flow_counter.utils import Point, VEHICLE_NAMES, intersect, compute_iou
 
 class FlowCounter:
     def __init__(self, model_path: str = "yolo11n.pt"):
@@ -13,6 +14,7 @@ class FlowCounter:
         :param model_path: Path to the YOLO model file.
         """
         self.model = YOLO(model_path)
+        self.uf = DictUnionFind()
         self._reset()
 
     def _reset(self):
@@ -38,7 +40,7 @@ class FlowCounter:
     def _count_crossing_objects(
         self,
         xyxys: np.ndarray,
-        ids: np.ndarray,
+        ids: list[int],
         classes: np.ndarray,
         line: tuple[Point, Point],
     ) -> int:
@@ -46,7 +48,7 @@ class FlowCounter:
         Count how many objects crossed a specific line.
 
         :param xyxys: Array of bounding boxes [[x1, y1, x2, y2], ...]
-        :param ids: Array of object IDs correspoinding to the boxes.
+        :param ids: List of object IDs correspoinding to the boxes.
         :param classes: Class IDs corresponding to the boxes.
         :param line: Line represented by two points (start, end).
         :return Number of new objects crossing the line.
@@ -54,14 +56,18 @@ class FlowCounter:
         count = 0
         for xyxy, box_id, cls_id in zip(xyxys, ids, classes):
             x1, y1, x2, y2 = map(int, xyxy)
+            root_id = self.uf.find(box_id)
+            class_name = self.model.names[cls_id]
 
-            if box_id == -1 or box_id in self.counted_ids:
+            if box_id == -1 or root_id in self.counted_ids:
+                continue
+
+            if class_name not in VEHICLE_NAMES:
                 continue
 
             if intersect((x1, y1), (x2, y2), line[0], line[1]):
-                class_name = self.model.names[cls_id]
                 count += 1
-                self.counted_ids.add(box_id)
+                self.counted_ids.add(root_id)
                 self.cls_counts[class_name] = self.cls_counts.get(class_name, 0) + 1
         return count
     
@@ -75,7 +81,7 @@ class FlowCounter:
         :return: Annotated frame.
         """
         cv2.line(frame, line[0], line[1], (0, 255, 255), 3)
-        cv2.putText(frame, str(counter), (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 4)
+        cv2.putText(frame, str(counter), (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 255, 255), 4)
         return frame
 
     def object_counts(self, input_path: str, output_path: str, line: tuple[Point, Point]) -> None:
@@ -109,8 +115,18 @@ class FlowCounter:
 
                 # [x1, y1, x2, y2] format
                 xyxys = boxes.xyxy.cpu().numpy()
-                ids = boxes.id.cpu().numpy() if boxes.id is not None else [-1] * len(boxes)
+                if boxes.id is not None:
+                    ids = np.round(boxes.id.cpu().numpy()).astype(int).tolist()
+                else:
+                    ids = [-1] * len(boxes)
                 classes = boxes.cls.cpu().numpy()
+
+                # Updated Non-Maximum Suppression
+                for i in range(len(xyxys)):
+                    for j in range(i + 1, len(xyxys)):
+                        iou = compute_iou(xyxys[i], xyxys[j])
+                        if iou >= 0.5:
+                            self.uf.unite(ids[i], ids[j])
 
                 counter += self._count_crossing_objects(xyxys, ids, classes, line)
 
