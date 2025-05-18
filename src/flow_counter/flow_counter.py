@@ -4,17 +4,19 @@ from tqdm import tqdm
 from ultralytics import YOLO
 
 from flow_counter.union_find import DictUnionFind
-from flow_counter.utils import Point, VEHICLE_NAMES, intersect, compute_iou
+from flow_counter.utils import Point, VEHICLE_NAMES, intersect, compute_iou, draw_table_on_image
 
 class FlowCounter:
-    def __init__(self, model_path: str = "yolo11n.pt"):
+    def __init__(self, model_path: str = "yolo11n.pt", debug: bool = False):
         """
         Initialize the flow counter with a given YOLO model.
 
         :param model_path: Path to the YOLO model file.
+        :param debug: If True, plot detailed bounding box.
         """
         self.model = YOLO(model_path)
         self.uf = DictUnionFind()
+        self.debug = debug
         self._reset()
 
     def _reset(self):
@@ -23,6 +25,8 @@ class FlowCounter:
 
         # Dictionary to store class-wise counts.
         self.cls_counts: dict[str, int] = {}
+
+        self.uf = DictUnionFind()
 
     def _open_video(self, input_path: str) -> tuple[cv2.VideoCapture, int, tuple[int, int]]:
         """
@@ -81,7 +85,14 @@ class FlowCounter:
         :return: Annotated frame.
         """
         cv2.line(frame, line[0], line[1], (0, 255, 255), 3)
-        cv2.putText(frame, str(counter), (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 255, 255), 4)
+
+        if self.debug:
+            cv2.putText(frame, str(counter), (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 255, 255), 4)
+        else:
+            table_data = [["Vehicle", "counter"]]
+            for name in VEHICLE_NAMES:
+                table_data.append([name, str(self.cls_counts.get(name, 0))])
+            draw_table_on_image(frame, table_data)
         return frame
 
     def object_counts(self, input_path: str, output_path: str, line: tuple[Point, Point]) -> None:
@@ -130,7 +141,10 @@ class FlowCounter:
 
                 counter += self._count_crossing_objects(xyxys, ids, classes, line)
 
-                annotated_frame = results[0].plot()
+                if self.debug:
+                    annotated_frame = results[0].plot()
+                else:
+                    annotated_frame = results[0].plot(conf=False, labels=False)
                 annotated_frame = self._annotate_frame(annotated_frame, line, counter)
 
                 out.write(annotated_frame)

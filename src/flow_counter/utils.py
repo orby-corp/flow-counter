@@ -1,4 +1,5 @@
 from typing import Tuple
+import cv2
 import numpy as np
 
 Point = Tuple[int, int]
@@ -47,3 +48,48 @@ def compute_iou(box1: np.ndarray, box2: np.ndarray) -> float:
     if union_area == 0:
         return 0.0
     return inter_area / union_area
+
+def draw_table_on_image(
+    image: np.ndarray,
+    table_data: list[list[str]],
+    start_x: int = 10,
+    start_y: int = 10,
+    cell_width: int = 150,
+    cell_height: int = 40,
+    font_scale: float = 0.6,
+    thickness: int = 1,
+) -> np.ndarray:
+    """
+    Draw a table on the top-left corner of an image using OpenCV.
+
+    Args:
+        image (np.ndarray): The target image to draw on.
+        table_data (list[list[str]]): A 2D list representing table data, 
+                                      e.g., [["Header1", "Header2"], ["Row1Col1", "Row1Col2"], ...].
+        start_x (int): X coordinate of the top-left corner of the table.
+        start_y (int): Y coordinate of the top-left corner of the table.
+        cell_width (int): Width of each cell in pixels.
+        cell_height (int): Height of each cell in pixels.
+        font_scale (float): Font scale for text.
+        thickness (int): Thickness for rectangle borders and text.
+
+    Returns:
+        np.ndarray: The image with the table drawn on it.
+    """
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    for i, row in enumerate(table_data):
+        for j, cell in enumerate(row):
+            top_left = (start_x + j * cell_width, start_y + i * cell_height)
+            bottom_right = (start_x + (j + 1) * cell_width, start_y + (i + 1) * cell_height)
+            # Fill cell background with white
+            cv2.rectangle(image, top_left, bottom_right, color=(255, 255, 255), thickness=-1)
+            # Draw cell border in black
+            cv2.rectangle(image, top_left, bottom_right, color=(0, 0, 0), thickness=thickness)
+            # Center the text in the cell
+            text_size = cv2.getTextSize(cell, font, font_scale, thickness)[0]
+            text_x = top_left[0] + (cell_width - text_size[0]) // 2
+            text_y = top_left[1] + (cell_height + text_size[1]) // 2
+            cv2.putText(image, cell, (text_x, text_y), font, font_scale, (0, 0, 0), thickness)
+
+    return image
