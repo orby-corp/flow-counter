@@ -4,7 +4,7 @@ import numpy as np
 
 Point = Tuple[int, int]
 
-VEHICLE_NAMES = {"car", "motorcycle", "bus", "truck"}
+VEHICLE_NAMES = {"person", "car", "motorcycle", "bus", "truck"}
 
 def intersect(a: Point, b: Point, c: Point, d: Point) -> bool:
     """

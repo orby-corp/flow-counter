@@ -1,3 +1,4 @@
+from pathlib import Path
 import cv2
 import numpy as np
 from tqdm import tqdm
@@ -86,13 +87,10 @@ class FlowCounter:
         """
         cv2.line(frame, line[0], line[1], (0, 255, 255), 3)
 
-        if self.debug:
-            cv2.putText(frame, str(counter), (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 255, 255), 4)
-        else:
-            table_data = [["Vehicle", "counter"]]
-            for name in VEHICLE_NAMES:
-                table_data.append([name, str(self.cls_counts.get(name, 0))])
-            draw_table_on_image(frame, table_data)
+        table_data = [["Vehicle", "counter"]]
+        for name in VEHICLE_NAMES:
+            table_data.append([name, str(self.cls_counts.get(name, 0))])
+        draw_table_on_image(frame, table_data)
         return frame
 
     def object_counts(self, input_path: str, output_path: str, line: tuple[Point, Point]) -> None:
@@ -150,7 +148,8 @@ class FlowCounter:
                 out.write(annotated_frame)
                 pbar.update(1)
 
-                if cv2.waitKey(1) & 0xFF == ord("q"):
+                if Path("stop.txt").exists():
+                    print("stop.txt detected, exiting loop.")
                     break
 
         cap.release()
