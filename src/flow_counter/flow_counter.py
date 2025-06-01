@@ -59,6 +59,7 @@ class FlowCounter:
         :return Number of new objects crossing the line.
         """
         count = 0
+        candidates = []
         for xyxy, box_id, cls_id in zip(xyxys, ids, classes):
             x1, y1, x2, y2 = map(int, xyxy)
             root_id = self.uf.find(box_id)
@@ -70,7 +71,33 @@ class FlowCounter:
             if class_name not in VEHICLE_NAMES:
                 continue
 
-            if intersect((x1, y1), (x2, y2), line[0], line[1]):
+            if (
+                intersect((x1, y1), (x2, y2), line[0], line[1]) 
+                or intersect((x1, y2), (x2, y1), line[0], line[1])
+            ):
+                candidates.append((xyxy, box_id, cls_id))   
+    
+        # Updated Non-Maximum Suppression
+        for xyxy1, box_id1, cls_id1 in candidates:
+            supression_flag = False
+            for xyxy2, box_id2, cls_id2 in zip(xyxys, ids, classes):
+                if box_id1 == box_id2:
+                    continue
+
+                iou = compute_iou(xyxy1, xyxy2)
+                root_id2 = self.uf.find(box_id2)
+                if iou >= 0.5 and root_id2 in self.counted_ids:
+                    self.uf.unite(box_id1, root_id2)
+                    self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
+                    supression_flag = True
+                elif iou >= 0.5:
+                    self.uf.unite(box_id1, root_id2)
+                    self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
+
+            # Update count
+            if not supression_flag:
+                class_name = self.model.names[cls_id1]
+                root_id = self.uf.find(box_id1)
                 count += 1
                 self.counted_ids.add(root_id)
                 self.cls_counts[class_name] = self.cls_counts.get(class_name, 0) + 1
@@ -129,13 +156,6 @@ class FlowCounter:
                 else:
                     ids = [-1] * len(boxes)
                 classes = boxes.cls.cpu().numpy()
-
-                # Updated Non-Maximum Suppression
-                for i in range(len(xyxys)):
-                    for j in range(i + 1, len(xyxys)):
-                        iou = compute_iou(xyxys[i], xyxys[j])
-                        if iou >= 0.5:
-                            self.uf.unite(ids[i], ids[j])
 
                 counter += self._count_crossing_objects(xyxys, ids, classes, line)
 
