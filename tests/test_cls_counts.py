@@ -50,10 +50,10 @@ def test_count_crossing_objects_only_vehicles(
     """
     boxes = np.array([[10, 10, 20, 20], [30, 30, 40, 40]])
     ids = np.array([1, 2])
-    classes = np.array([0, 1])  # 0: "car", 1: "person"
+    classes = np.array([0, 1])  # 0: "car", 1: "dog"
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
-    flow_counter.model.names = {0: "car", 1: "person"}
+    flow_counter.model.names = {0: "car", 1: "dog"}
 
     flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
@@ -68,14 +68,14 @@ def test_count_crossing_objects_multiple_vehicle_types(
     """
     boxes = np.array([[10, 10, 20, 20], [30, 30, 40, 40], [50, 50, 60, 60]])
     ids = np.array([1, 2, 3])
-    classes = np.array([0, 1, 2])  # 0: car, 1: bus, 2: person
+    classes = np.array([0, 1, 2])  # 0: car, 1: bus, 2: dog
 
     mocker.patch("flow_counter.flow_counter.intersect", return_value=True)
-    flow_counter.model.names = {0: "car", 1: "bus", 2: "person"}
+    flow_counter.model.names = {0: "car", 1: "bus", 2: "dog"}
 
     flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
-    # Only vehicles (car, bus) should be counted, person should not
+    # Only vehicles (car, bus) should be counted, dog should not
     assert flow_counter.cls_counts == {"car": 1, "bus": 1}
 
 def test_count_crossing_objects_skips_non_intersecting_boxes(
