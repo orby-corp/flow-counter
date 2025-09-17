@@ -46,7 +46,7 @@ def test_count_crossing_objects_only_vehicles(
     mocker, dummy_line, flow_counter
 ):
     """
-    Only vehicle classes in VEHICLE_NAMES should be counted.
+    Only vehicle classes in counted_cls_name should be counted.
     """
     boxes = np.array([[10, 10, 20, 20], [30, 30, 40, 40]])
     ids = np.array([1, 2])

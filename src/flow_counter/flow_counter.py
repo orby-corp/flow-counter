@@ -1,14 +1,18 @@
-from pathlib import Path
 import cv2
 import numpy as np
 from tqdm import tqdm
 from ultralytics import YOLO
 
 from flow_counter.union_find import DictUnionFind
-from flow_counter.utils import Point, VEHICLE_NAMES, intersect, compute_iou, draw_table_on_image
+from flow_counter.utils import Point, intersect, compute_iou, draw_table_on_image
 
 class FlowCounter:
-    def __init__(self, model_path: str = "yolo11n.pt", debug: bool = False):
+    def __init__(
+        self, 
+        model_path: str = "yolo11n.pt", 
+        counted_cls_names: set[str] = {"person", "car", "motorcycle", "bus", "truck"},
+        debug: bool = False,
+    ):
         """
         Initialize the flow counter with a given YOLO model.
 
@@ -17,6 +21,7 @@ class FlowCounter:
         """
         self.model = YOLO(model_path)
         self.uf = DictUnionFind()
+        self.counted_cls_names = counted_cls_names
         self.debug = debug
         self._reset()
 
@@ -68,7 +73,7 @@ class FlowCounter:
             if box_id == -1 or root_id in self.counted_ids:
                 continue
 
-            if class_name not in VEHICLE_NAMES:
+            if class_name not in self.counted_cls_names:
                 continue
 
             if (
@@ -115,7 +120,7 @@ class FlowCounter:
         cv2.line(frame, line[0], line[1], (0, 255, 255), 3)
 
         table_data = [["Vehicle", "counter"]]
-        for name in VEHICLE_NAMES:
+        for name in self.counted_cls_names:
             table_data.append([name, str(self.cls_counts.get(name, 0))])
         draw_table_on_image(frame, table_data)
         return frame
@@ -167,10 +172,6 @@ class FlowCounter:
 
                 out.write(annotated_frame)
                 pbar.update(1)
-
-                if Path("stop.txt").exists():
-                    print("stop.txt detected, exiting loop.")
-                    break
 
         cap.release()
         out.release()

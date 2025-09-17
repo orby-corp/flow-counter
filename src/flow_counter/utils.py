@@ -4,8 +4,6 @@ import numpy as np
 
 Point = Tuple[int, int]
 
-VEHICLE_NAMES = {"person", "car", "motorcycle", "bus", "truck"}
-
 def intersect(a: Point, b: Point, c: Point, d: Point) -> bool:
     """
     Determines whether two line segments AB and CD intersect.
