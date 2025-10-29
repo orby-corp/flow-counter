@@ -154,8 +154,22 @@ class FlowCounter:
                 results = self.model.track(frame, persist=True, verbose=False)
                 boxes = results[0].boxes
 
-                # [x1, y1, x2, y2] format
-                xyxys = boxes.xyxy.cpu().numpy()
+                # [x, y, width, height] format
+                xywh = boxes.xywh.cpu().numpy()
+
+                # Fix bounding box size to 30x30 (center-based)
+                xywh[:, 2:] = 30
+
+                # Convert back to [x1, y1, x2, y2] format from center coordinates
+                xyxys = np.hstack([xywh[:, :2] - 15, xywh[:, :2] + 15])
+
+                # Clip boxes to stay within image boundaries
+                xyxys = np.clip(
+                    xyxys,
+                    0,
+                    [frame.shape[1] - 1, frame.shape[0] - 1, frame.shape[1] - 1, frame.shape[0] - 1],
+                )
+
                 if boxes.id is not None:
                     ids = np.round(boxes.id.cpu().numpy()).astype(int).tolist()
                 else:
