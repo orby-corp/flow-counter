@@ -52,7 +52,7 @@ def draw_table_on_image(
     table_data: list[list[str]],
     start_x: int = 10,
     start_y: int = 10,
-    cell_width: int = 150,
+    cell_width: int = 120,
     cell_height: int = 40,
     font_scale: float = 0.6,
     thickness: int = 1,

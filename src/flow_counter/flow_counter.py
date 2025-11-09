@@ -6,17 +6,20 @@ from ultralytics import YOLO
 from flow_counter.union_find import DictUnionFind
 from flow_counter.utils import Point, intersect, compute_iou, draw_table_on_image
 
+LINE = tuple[Point, Point]
+
 class FlowCounter:
     def __init__(
         self, 
         model_path: str = "yolo11n.pt", 
-        counted_cls_names: set[str] = {"person", "car", "motorcycle", "bus", "truck"},
+        counted_cls_names: list[str] = ["person", "car", "motorcycle", "bus", "truck"],
         debug: bool = False,
     ):
         """
         Initialize the flow counter with a given YOLO model.
 
         :param model_path: Path to the YOLO model file.
+        :param counted_cls_names: The class names only given are counted.
         :param debug: If True, plot detailed bounding box.
         """
         self.model = YOLO(model_path)
@@ -29,8 +32,10 @@ class FlowCounter:
         # Set of already-counted object IDs.
         self.counted_ids: set[int] = set()
 
-        # Dictionary to store class-wise counts.
-        self.cls_counts: dict[str, int] = {}
+        # Dictionary to store class-wise counts. {vehicle: {line name: count}}
+        self.cls_counts: dict[str, dict[str, int]] = {}
+        for vehicle_name in self.counted_cls_names:
+            self.cls_counts[vehicle_name] = {}
 
         self.uf = DictUnionFind()
 
@@ -52,7 +57,7 @@ class FlowCounter:
         xyxys: np.ndarray,
         ids: list[int],
         classes: np.ndarray,
-        line: tuple[Point, Point],
+        line_map: dict[str, tuple[LINE, LINE]],
     ) -> int:
         """
         Count how many objects crossed a specific line.
@@ -60,7 +65,7 @@ class FlowCounter:
         :param xyxys: Array of bounding boxes [[x1, y1, x2, y2], ...]
         :param ids: List of object IDs correspoinding to the boxes.
         :param classes: Class IDs corresponding to the boxes.
-        :param line: Line represented by two points (start, end).
+        :param line_map: Line map represented by two points (start, end).
         :return Number of new objects crossing the line.
         """
         count = 0
@@ -76,14 +81,12 @@ class FlowCounter:
             if class_name not in self.counted_cls_names:
                 continue
 
-            if (
-                intersect((x1, y1), (x2, y2), line[0], line[1]) 
-                or intersect((x1, y2), (x2, y1), line[0], line[1])
-            ):
-                candidates.append((xyxy, box_id, cls_id))   
+            for line_name, line in line_map.items():
+                if intersect((x1, y2), (x2, y2), line[0], line[1]):
+                    candidates.append((xyxy, box_id, cls_id, line_name))   
     
         # Updated Non-Maximum Suppression
-        for xyxy1, box_id1, cls_id1 in candidates:
+        for xyxy1, box_id1, cls_id1, line_name in candidates:
             supression_flag = False
             for xyxy2, box_id2, cls_id2 in zip(xyxys, ids, classes):
                 if box_id1 == box_id2:
@@ -105,33 +108,37 @@ class FlowCounter:
                 root_id = self.uf.find(box_id1)
                 count += 1
                 self.counted_ids.add(root_id)
-                self.cls_counts[class_name] = self.cls_counts.get(class_name, 0) + 1
+                self.cls_counts[class_name][line_name] = self.cls_counts[class_name].get(line_name, 0) + 1
         return count
     
-    def _annotate_frame(self, frame: np.ndarray, line: tuple[Point, Point], counter: int) -> np.ndarray:
+    def _annotate_frame(self, frame: np.ndarray, line_map: dict[str, tuple[LINE, LINE]], counter: int) -> np.ndarray:
         """
-        Draw the counting line and current count on the frame.
+        Draw the counting lines and current count on the frame.
 
         :param frame: The current frame to annotate.
-        :param line: The counting line.
+        :param line_map: The counting line map.
         :param counter: The number of objects counted so far.
         :return: Annotated frame.
         """
-        cv2.line(frame, line[0], line[1], (0, 255, 255), 3)
+        # Draw lines
+        for lines in line_map.values():
+            cv2.line(frame, lines[0], lines[1], (0, 255, 255), 3)
 
-        table_data = [["Vehicle", "counter"]]
-        for name in self.counted_cls_names:
-            table_data.append([name, str(self.cls_counts.get(name, 0))])
+        table_data = [["Vehicle"] + list(line_map.keys())]
+        for vehicle_name in self.counted_cls_names:
+            table_data.append([vehicle_name] + [
+                str(self.cls_counts[vehicle_name].get(line_name, 0)) for line_name in line_map
+            ])
         draw_table_on_image(frame, table_data)
         return frame
 
-    def object_counts(self, input_path: str, output_path: str, line: tuple[Point, Point]) -> None:
+    def object_counts(self, input_path: str, output_path: str, line_map: dict[str, tuple[LINE, LINE]]) -> None:
         """
-        Count objects crossing a line in a video.
+        Count objects crossing two lines in a video.
 
         :param input_path: Path to the input video file.
         :param output_path: Path to the output video file (annotated).
-        :param line: A tuple of two points defining the line ((x1, y1), (x2, y2))
+        :param line_map: A dict of two lines ((x1, y1), (x2, y2))
         """
         self._reset()
         cap, total_frames, frame_size = self._open_video(input_path)
@@ -154,21 +161,8 @@ class FlowCounter:
                 results = self.model.track(frame, persist=True, verbose=False)
                 boxes = results[0].boxes
 
-                # [x, y, width, height] format
-                xywh = boxes.xywh.cpu().numpy()
-
-                # Fix bounding box size to 30x30 (center-based)
-                xywh[:, 2:] = 30
-
-                # Convert back to [x1, y1, x2, y2] format from center coordinates
-                xyxys = np.hstack([xywh[:, :2] - 15, xywh[:, :2] + 15])
-
-                # Clip boxes to stay within image boundaries
-                xyxys = np.clip(
-                    xyxys,
-                    0,
-                    [frame.shape[1] - 1, frame.shape[0] - 1, frame.shape[1] - 1, frame.shape[0] - 1],
-                )
+                # [x1, y1, x2, y2] format
+                xyxys = boxes.xyxy.cpu().numpy()
 
                 if boxes.id is not None:
                     ids = np.round(boxes.id.cpu().numpy()).astype(int).tolist()
@@ -176,13 +170,13 @@ class FlowCounter:
                     ids = [-1] * len(boxes)
                 classes = boxes.cls.cpu().numpy()
 
-                counter += self._count_crossing_objects(xyxys, ids, classes, line)
+                counter += self._count_crossing_objects(xyxys, ids, classes, line_map)
 
                 if self.debug:
                     annotated_frame = results[0].plot()
                 else:
                     annotated_frame = results[0].plot(conf=False, labels=False)
-                annotated_frame = self._annotate_frame(annotated_frame, line, counter)
+                annotated_frame = self._annotate_frame(annotated_frame, line_map, counter)
 
                 out.write(annotated_frame)
                 pbar.update(1)
