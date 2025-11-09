@@ -1,3 +1,4 @@
+from collections import defaultdict
 import cv2
 import numpy as np
 from tqdm import tqdm
@@ -32,6 +33,9 @@ class FlowCounter:
         # Set of already-counted object IDs.
         self.counted_ids: set[int] = set()
 
+        # Track which lines each object has crossed.
+        self.crossed_lines: dict[str, set[str]] = defaultdict(set)
+
         # Dictionary to store class-wise counts. {vehicle: {line name: count}}
         self.cls_counts: dict[str, dict[str, int]] = {}
         for vehicle_name in self.counted_cls_names:
@@ -60,7 +64,7 @@ class FlowCounter:
         line_map: dict[str, tuple[LINE, LINE]],
     ) -> int:
         """
-        Count how many objects crossed a specific line.
+        Count objects that have crossed both lines defined in the line_map.
 
         :param xyxys: Array of bounding boxes [[x1, y1, x2, y2], ...]
         :param ids: List of object IDs correspoinding to the boxes.
@@ -69,6 +73,8 @@ class FlowCounter:
         :return Number of new objects crossing the line.
         """
         count = 0
+
+        # Step1: Collect candidates that intersect either line1 or line2
         candidates = []
         for xyxy, box_id, cls_id in zip(xyxys, ids, classes):
             x1, y1, x2, y2 = map(int, xyxy)
@@ -81,12 +87,14 @@ class FlowCounter:
             if class_name not in self.counted_cls_names:
                 continue
 
-            for line_name, line in line_map.items():
-                if intersect((x1, y2), (x2, y2), line[0], line[1]):
-                    candidates.append((xyxy, box_id, cls_id, line_name))   
+            for line_name, (line1, line2) in line_map.items():
+                if intersect((x1, y2), (x2, y2), line1[0], line1[1]):
+                    candidates.append((xyxy, box_id, cls_id, line_name, f"{line_name}_1"))
+                if intersect((x1, y2), (x2, y2), line2[0], line2[1]):
+                    candidates.append((xyxy, box_id, cls_id, line_name, f"{line_name}_2")) 
     
-        # Updated Non-Maximum Suppression
-        for xyxy1, box_id1, cls_id1, line_name in candidates:
+        # Step2: Updated Non-Maximum Suppression
+        for xyxy1, box_id1, cls_id1, line_name, line_key in candidates:
             supression_flag = False
             for xyxy2, box_id2, cls_id2 in zip(xyxys, ids, classes):
                 if box_id1 == box_id2:
@@ -102,13 +110,23 @@ class FlowCounter:
                     self.uf.unite(box_id1, root_id2)
                     self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
 
-            # Update count
+            # Step3: Check if object has crossed both lines
             if not supression_flag:
                 class_name = self.model.names[cls_id1]
                 root_id = self.uf.find(box_id1)
-                count += 1
-                self.counted_ids.add(root_id)
-                self.cls_counts[class_name][line_name] = self.cls_counts[class_name].get(line_name, 0) + 1
+
+                # Record which line this object has crossed
+                self.crossed_lines[root_id].add(line_key)
+
+                # Count only if both lines are crossed
+                if (
+                    f"{line_name}_1" in self.crossed_lines[root_id]
+                    and f"{line_name}_2" in self.crossed_lines[root_id]
+                    and root_id not in self.counted_ids
+                ):
+                    count += 1
+                    self.counted_ids.add(root_id)
+                    self.cls_counts[class_name][line_name] = self.cls_counts[class_name].get(line_name, 0) + 1
         return count
     
     def _annotate_frame(self, frame: np.ndarray, line_map: dict[str, tuple[LINE, LINE]], counter: int) -> np.ndarray:
@@ -116,13 +134,14 @@ class FlowCounter:
         Draw the counting lines and current count on the frame.
 
         :param frame: The current frame to annotate.
-        :param line_map: The counting line map.
+        :param line_map: The line map, where each key contains two lines ((x1, y1), (x2, y2)), ((x3, y3), (x4, y4)).
         :param counter: The number of objects counted so far.
         :return: Annotated frame.
         """
-        # Draw lines
-        for lines in line_map.values():
-            cv2.line(frame, lines[0], lines[1], (0, 255, 255), 3)
+        # Draw each pair of lines in the map
+        for (line1, line2) in line_map.values():
+            cv2.line(frame, line1[0], line1[1], (0, 255, 255), 3)
+            cv2.line(frame, line2[0], line2[1], (0, 255, 0), 3)
 
         table_data = [["Vehicle"] + list(line_map.keys())]
         for vehicle_name in self.counted_cls_names:
