@@ -52,9 +52,10 @@ def draw_table_on_image(
     table_data: list[list[str]],
     start_x: int = 10,
     start_y: int = 10,
-    cell_width: int = 120,
-    cell_height: int = 40,
-    font_scale: float = 0.6,
+    first_col_width: int = 120,
+    other_col_width: int = 70,
+    cell_height: int = 30,
+    font_scale: float = 0.5,
     thickness: int = 1,
 ) -> np.ndarray:
     """
@@ -77,9 +78,13 @@ def draw_table_on_image(
     font = cv2.FONT_HERSHEY_SIMPLEX
 
     for i, row in enumerate(table_data):
+        x = start_x
         for j, cell in enumerate(row):
-            top_left = (start_x + j * cell_width, start_y + i * cell_height)
-            bottom_right = (start_x + (j + 1) * cell_width, start_y + (i + 1) * cell_height)
+            # Set dynamic width
+            cell_width = first_col_width if j == 0 else other_col_width
+
+            top_left = (x, start_y + i * cell_height)
+            bottom_right = (x + cell_width, start_y + (i + 1) * cell_height)
             # Fill cell background with white
             cv2.rectangle(image, top_left, bottom_right, color=(255, 255, 255), thickness=-1)
             # Draw cell border in black
@@ -89,5 +94,7 @@ def draw_table_on_image(
             text_x = top_left[0] + (cell_width - text_size[0]) // 2
             text_y = top_left[1] + (cell_height + text_size[1]) // 2
             cv2.putText(image, cell, (text_x, text_y), font, font_scale, (0, 0, 0), thickness)
+
+            x += cell_width
 
     return image

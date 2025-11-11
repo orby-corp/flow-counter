@@ -14,6 +14,7 @@ class FlowCounter:
         self, 
         model_path: str = "yolo11n.pt", 
         counted_cls_names: list[str] = ["person", "car", "motorcycle", "bus", "truck"],
+        tracker_file: str | None = None,
         debug: bool = False,
     ):
         """
@@ -21,11 +22,13 @@ class FlowCounter:
 
         :param model_path: Path to the YOLO model file.
         :param counted_cls_names: The class names only given are counted.
+        :tracker_file: YAML file including tracker parameters.
         :param debug: If True, plot detailed bounding box.
         """
         self.model = YOLO(model_path)
         self.uf = DictUnionFind()
         self.counted_cls_names = counted_cls_names
+        self.tracker_file = tracker_file
         self.debug = debug
         self._reset()
 
@@ -177,7 +180,10 @@ class FlowCounter:
                 if not success:
                     break
 
-                results = self.model.track(frame, persist=True, verbose=False)
+                if self.tracker_file is not None:
+                    results = self.model.track(frame, persist=True, verbose=False, tracker=self.tracker_file)
+                else:
+                    results = self.model.track(frame, persist=True, verbose=False)
                 boxes = results[0].boxes
 
                 # [x1, y1, x2, y2] format
