@@ -8,6 +8,7 @@ version = "0.1.7"
 dependencies = [
     "ultralytics>=8.3",
     "lap>=0.5.12",
+    "tqdm>=4.67",
 ]
 requires-python = ">= 3.10"
 license = { "text" = "AGPL-3.0" }
