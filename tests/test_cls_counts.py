@@ -4,9 +4,11 @@ from pytest_mock import MockerFixture
 from flow_counter import FlowCounter
 from flow_counter.utils import Point
 
+LINE = tuple[Point, Point]
+
 def test_count_crossing_objects_updates_cls_counts(
     mocker: MockerFixture, 
-    dummy_line: tuple[Point, Point], 
+    dummy_line: dict[str, tuple[LINE, LINE]], 
     flow_counter: FlowCounter, 
 ) -> None:
     """
@@ -21,11 +23,11 @@ def test_count_crossing_objects_updates_cls_counts(
 
     flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
-    assert flow_counter.cls_counts == {"car": 1}
+    assert flow_counter.cls_counts == {"person": {}, "car": {"dummy": 1}, "motorcycle": {}, "bus": {}, "truck": {}}
 
 def test_count_crossing_objects_accumulates_same_class(
     mocker: MockerFixture, 
-    dummy_line: tuple[Point, Point], 
+    dummy_line: dict[str, tuple[LINE, LINE]], 
     flow_counter: FlowCounter, 
 ) -> None:
     """
@@ -40,7 +42,7 @@ def test_count_crossing_objects_accumulates_same_class(
 
     flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
-    assert flow_counter.cls_counts == {"car": 2}
+    assert flow_counter.cls_counts == {"person": {}, "car": {"dummy": 2}, "motorcycle": {}, "bus": {}, "truck": {}}
 
 def test_count_crossing_objects_only_vehicles(
     mocker, dummy_line, flow_counter
@@ -58,7 +60,7 @@ def test_count_crossing_objects_only_vehicles(
     flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
     # Only 'car' should be counted
-    assert flow_counter.cls_counts == {"car": 1}
+    assert flow_counter.cls_counts == {"person": {}, "car": {"dummy": 1}, "motorcycle": {}, "bus": {}, "truck": {}}
 
 def test_count_crossing_objects_multiple_vehicle_types(
     mocker, dummy_line, flow_counter
@@ -76,11 +78,11 @@ def test_count_crossing_objects_multiple_vehicle_types(
     flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
     # Only vehicles (car, bus) should be counted, dog should not
-    assert flow_counter.cls_counts == {"car": 1, "bus": 1}
+    assert flow_counter.cls_counts == {"person": {}, "car": {"dummy": 1}, "motorcycle": {}, "bus": {"dummy": 1}, "truck": {}}
 
 def test_count_crossing_objects_skips_non_intersecting_boxes(
     mocker: MockerFixture, 
-    dummy_line: tuple[Point, Point], 
+    dummy_line: dict[str, tuple[LINE, LINE]], 
     flow_counter: FlowCounter, 
 ) -> None:
     """
@@ -96,11 +98,11 @@ def test_count_crossing_objects_skips_non_intersecting_boxes(
     result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
     assert result == 0
-    assert flow_counter.cls_counts == {}
+    assert flow_counter.cls_counts == {"person": {}, "car": {}, "motorcycle": {}, "bus": {}, "truck": {}}
 
 def test_count_crossing_objects_skips_already_counted_id(
     mocker: MockerFixture, 
-    dummy_line: tuple[Point, Point], 
+    dummy_line: dict[str, tuple[LINE, LINE]], 
     flow_counter: FlowCounter, 
 ) -> None:
     """
@@ -117,4 +119,59 @@ def test_count_crossing_objects_skips_already_counted_id(
     result = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_line)
 
     assert result == 0
-    assert flow_counter.cls_counts == {}
+    assert flow_counter.cls_counts == {"person": {}, "car": {}, "motorcycle": {}, "bus": {}, "truck": {}}
+
+def test_count_when_crossing_both_lines(
+    mocker: MockerFixture,
+    dummy_two_lines: dict[str, tuple[LINE, LINE]], 
+    flow_counter: FlowCounter,
+) -> None:
+    """
+    Verify that when an object crosses both lines positioned differently,
+    it is counted once.
+    """
+    flow_counter.model.names = {0: "car"}
+
+    boxes = np.array([[10, 10, 20, 20]])
+    ids = np.array([1])
+    classes = np.array([0])
+
+    # 1st frame: object crosses the first line only
+    mocker.patch("flow_counter.flow_counter.intersect", side_effect=[True, False])
+    flow_counter._count_crossing_objects(boxes, ids, classes, dummy_two_lines)
+
+    # 2nd frame: same object now crosses the second line
+    mocker.patch("flow_counter.flow_counter.intersect", side_effect=[False, True])
+    count = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_two_lines)
+
+    # Now it should be counted after crossing both lines
+    assert count == 1
+    assert flow_counter.cls_counts["car"]["dummy"] == 1
+
+
+def test_not_count_when_crossing_only_one_line(
+    mocker: MockerFixture, 
+    dummy_two_lines: dict[str, tuple[LINE, LINE]], 
+    flow_counter: FlowCounter,
+) -> None:
+    """
+    Verify that when an object crosses only one of two differently positioned lines,
+    it is not counted.
+    """
+    flow_counter.model.names = {0: "car"}
+
+    boxes = np.array([[10, 10, 20, 20]])
+    ids = np.array([1])
+    classes = np.array([0])
+
+    # 1st frame: object crosses the first line only
+    mocker.patch("flow_counter.flow_counter.intersect", side_effect=[True, False])
+    flow_counter._count_crossing_objects(boxes, ids, classes, dummy_two_lines)
+
+    # 2nd frame: same object now crosses the second line
+    mocker.patch("flow_counter.flow_counter.intersect", side_effect=[False, False])
+    count = flow_counter._count_crossing_objects(boxes, ids, classes, dummy_two_lines)
+
+    # Now it should be counted after crossing both lines
+    assert count == 0
+    assert "dummy" not in flow_counter.cls_counts["car"]

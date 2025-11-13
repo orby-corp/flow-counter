@@ -11,14 +11,23 @@ pip install -e .
 
 ## Python
 ```python
-from flow_counter import FlowCounter
+from flow_counter.flow_counter import FlowCounter
 
+# Initialize FlowCounter with YOLO model
 fc = FlowCounter("yolo11n.pt")
 
-# Define the counting line as a tuple of two points ((x1, y1), (x2, y2))
-fc.object_counts("input.mp4", "output.mp4", ((100, 300), (800, 300)))
+# Define two counting lines for each area name
+# Each entry in the line_map contains a pair of lines ((x1, y1), (x2, y2)) and ((x3, y3), (x4, y4))
+line_map = {
+    "road": (((100, 300), (800, 300)), ((100, 400), (800, 400)))
+}
 
-print(fc.cls_counts)  # {"car": 3, "person": 2}
+# Perform counting
+fc.object_counts("input.mp4", "output.mp4", line_map)
+
+# Display results
+# Example output: {"person": {"road": 2}, "car": {"road": 3}, "motorcycle": {}, "bus": {}, "truck": {}}
+print(fc.cls_counts)
 ```
 
 ## License

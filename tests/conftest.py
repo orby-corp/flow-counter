@@ -4,9 +4,15 @@ from pytest_mock import MockerFixture
 from flow_counter import FlowCounter
 from flow_counter.utils import Point
 
+LINE = tuple[Point, Point]
+
 @pytest.fixture
-def dummy_line() -> tuple[Point, Point]:
-    return ((0, 0), (100, 100))
+def dummy_line() -> dict[str, tuple[LINE, LINE]]:
+    return {"dummy": (((0, 0), (100, 100)), ((0, 0), (100, 100)))}
+
+@pytest.fixture
+def dummy_two_lines() -> dict[str, tuple[LINE, LINE]]:
+    return {"dummy": (((0, 0), (100, 0)), ((0, 100), (100, 100)))}
 
 @pytest.fixture
 def flow_counter(mocker: MockerFixture) -> FlowCounter:
