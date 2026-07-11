@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Callable
 import cv2
 import numpy as np
 from tqdm import tqdm
@@ -154,13 +155,23 @@ class FlowCounter:
         draw_table_on_image(frame, table_data)
         return frame
 
-    def object_counts(self, input_path: str, output_path: str, line_map: dict[str, tuple[LINE, LINE]]) -> None:
+    def object_counts(
+        self,
+        input_path: str,
+        output_path: str,
+        line_map: dict[str, tuple[LINE, LINE]],
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> None:
         """
         Count objects crossing two lines in a video.
 
         :param input_path: Path to the input video file.
         :param output_path: Path to the output video file (annotated).
         :param line_map: A dict of two lines ((x1, y1), (x2, y2))
+        :param progress_callback: Optional callback invoked after every processed
+            frame as callback(frames_done, total_frames). Intended for reporting
+            processing progress to an external system; a callback that raises is
+            logged and ignored so it never interrupts video processing.
         """
         self._reset()
         cap, total_frames, frame_size = self._open_video(input_path)
@@ -173,7 +184,8 @@ class FlowCounter:
         )
 
         counter = 0
-        
+        frames_done = 0
+
         with tqdm(total=total_frames, desc=f"Processing {input_path}") as pbar:
             while cap.isOpened():
                 success, frame = cap.read()
@@ -205,6 +217,13 @@ class FlowCounter:
 
                 out.write(annotated_frame)
                 pbar.update(1)
+
+                frames_done += 1
+                if progress_callback is not None:
+                    try:
+                        progress_callback(frames_done, total_frames)
+                    except Exception as e:
+                        print(f"[WARNING] progress_callback failed: {e}")
 
         cap.release()
         out.release()
