@@ -105,13 +105,18 @@ class FlowCounter:
                     continue
 
                 iou = compute_iou(xyxy1, xyxy2)
+                root_id1 = self.uf.find(box_id1)
                 root_id2 = self.uf.find(box_id2)
                 if iou >= 0.5 and root_id2 in self.counted_ids:
                     self.uf.unite(box_id1, root_id2)
+                    new_root = self.uf.find(box_id1)
+                    self.crossed_lines[new_root] = self.crossed_lines[root_id1] | self.crossed_lines[root_id2]
                     self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
                     supression_flag = True
                 elif iou >= 0.5:
                     self.uf.unite(box_id1, root_id2)
+                    new_root = self.uf.find(box_id1)
+                    self.crossed_lines[new_root] = self.crossed_lines[root_id1] | self.crossed_lines[root_id2]
                     self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
 
             # Step3: Check if object has crossed both lines
