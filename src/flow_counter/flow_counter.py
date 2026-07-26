@@ -54,6 +54,20 @@ class FlowCounter:
 
         self.uf = DictUnionFind()
 
+        # Frame counter, incremented once per _count_crossing_objects() call
+        # (one call == one processed frame), used to timestamp the history
+        # entries below.
+        self._frame_idx = 0
+
+        # Record of every unite() call: which roots were merged, into which
+        # new root, and on which frame.
+        self.merge_history: list[dict] = []
+
+        # Record of every confirmed crossing (both lines crossed): which
+        # object/class/line, whether it was a reverse crossing, and on which
+        # frame.
+        self.crossing_history: list[dict] = []
+
     def _merge_first_crossed_side(self, root_id1: str, root_id2: str, new_root: str) -> None:
         """
         Carry first_crossed_side records over to the new root produced by
@@ -107,6 +121,7 @@ class FlowCounter:
         :param line_map: Line map represented by two points (start, end).
         :return Number of new objects crossing the line.
         """
+        self._frame_idx += 1
         count = 0
 
         # Step1: Collect candidates that intersect either line1 or line2
@@ -144,6 +159,12 @@ class FlowCounter:
                     self.crossed_lines[new_root] = self.crossed_lines[root_id1] | self.crossed_lines[root_id2]
                     self._merge_first_crossed_side(root_id1, root_id2, new_root)
                     self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
+                    self.merge_history.append({
+                        "frame": self._frame_idx,
+                        "old_root1": root_id1,
+                        "old_root2": root_id2,
+                        "new_root": new_root,
+                    })
                     supression_flag = True
                 elif iou >= 0.5:
                     self.uf.unite(box_id1, root_id2)
@@ -151,6 +172,12 @@ class FlowCounter:
                     self.crossed_lines[new_root] = self.crossed_lines[root_id1] | self.crossed_lines[root_id2]
                     self._merge_first_crossed_side(root_id1, root_id2, new_root)
                     self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
+                    self.merge_history.append({
+                        "frame": self._frame_idx,
+                        "old_root1": root_id1,
+                        "old_root2": root_id2,
+                        "new_root": new_root,
+                    })
 
             # Step3: Check if object has crossed both lines
             if not supression_flag:
@@ -175,10 +202,74 @@ class FlowCounter:
                     self.cls_counts[class_name][line_name] = self.cls_counts[class_name].get(line_name, 0) + 1
 
                     # line2 crossed before line1 means the object passed in reverse.
-                    if self.first_crossed_side[(root_id, line_name)] == f"{line_name}_2":
+                    is_reverse = self.first_crossed_side[(root_id, line_name)] == f"{line_name}_2"
+                    if is_reverse:
                         self.reverse_crossings[line_name] = self.reverse_crossings.get(line_name, 0) + 1
+
+                    self.crossing_history.append({
+                        "frame": self._frame_idx,
+                        "root_id": root_id,
+                        "class_name": class_name,
+                        "line_name": line_name,
+                        "reverse": is_reverse,
+                    })
         return count
-    
+
+    def get_statistics(self) -> dict:
+        """
+        Summarize the state accumulated by object_counts() into a
+        human-readable structure. Intended to be called after object_counts()
+        has finished processing a video.
+
+        :return: Dict with keys "cls_counts", "reverse_crossings",
+            "first_crossed_side", "merged_id_groups", "merge_timeline", and
+            "crossing_timeline".
+        """
+        # first_crossed_side keyed by (root_id, line_name) -> "{line_name}_1"
+        # or "{line_name}_2"; regroup as line_name -> root_id -> "line1"/"line2".
+        first_crossed_side: dict = defaultdict(dict)
+        for (root_id, line_name), line_key in self.first_crossed_side.items():
+            side = "line1" if line_key == f"{line_name}_1" else "line2"
+            first_crossed_side[line_name][root_id] = side
+
+        # self.uf only exposes find()/unite(); walk its internal parent map
+        # and group box_ids by root to see which tracker IDs got merged.
+        # Roots with a single member never went through unite(), so they are
+        # dropped to keep the output focused on actual merges.
+        merged_id_groups: dict = defaultdict(list)
+        for box_id in self.uf.parent:
+            merged_id_groups[self.uf.find(box_id)].append(box_id)
+        merged_id_groups = {
+            root_id: sorted(box_ids, key=str)
+            for root_id, box_ids in merged_id_groups.items()
+            if len(box_ids) > 1
+        }
+
+        merge_timeline = [
+            f"frame {event['frame']}: object {event['old_root1']} と object {event['old_root2']} "
+            f"を統合（統合後のroot: {event['new_root']}）"
+            for event in self.merge_history
+        ]
+        crossing_timeline = [
+            "frame {frame}: {cls} (id={root_id}) が {line} を通過（{direction}）".format(
+                frame=event["frame"],
+                cls=event["class_name"],
+                root_id=event["root_id"],
+                line=event["line_name"],
+                direction="逆方向" if event["reverse"] else "順方向",
+            )
+            for event in self.crossing_history
+        ]
+
+        return {
+            "cls_counts": {name: dict(counts) for name, counts in self.cls_counts.items()},
+            "reverse_crossings": dict(self.reverse_crossings),
+            "first_crossed_side": dict(first_crossed_side),
+            "merged_id_groups": merged_id_groups,
+            "merge_timeline": merge_timeline,
+            "crossing_timeline": crossing_timeline,
+        }
+
     def _annotate_frame(self, frame: np.ndarray, line_map: dict[str, tuple[LINE, LINE]], counter: int) -> np.ndarray:
         """
         Draw the counting lines and current count on the frame.

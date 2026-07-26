@@ -33,6 +33,16 @@ print(fc.cls_counts)
 # Included in the counts above; use this to spot-check how much reverse-direction traffic
 # (e.g. oncoming lane) is being counted. Example output: {"road": 1}
 print(fc.reverse_crossings)
+
+# Human-readable summary of everything object_counts() tracked internally,
+# including which frame each ID merge / line crossing happened on.
+stats = fc.get_statistics()
+print(stats["cls_counts"])          # same content as fc.cls_counts
+print(stats["reverse_crossings"])   # same content as fc.reverse_crossings
+print(stats["first_crossed_side"])  # {"road": {"5": "line1"}}
+print(stats["merged_id_groups"])    # tracker IDs merged into one object, e.g. {"5": ["5", "7"]}
+print(stats["merge_timeline"])      # ["frame 8: object 7 と object 5 を統合（統合後のroot: 5）"]
+print(stats["crossing_timeline"])   # ["frame 12: car (id=5) が road を通過（順方向）"]
 ```
 
 ## License
