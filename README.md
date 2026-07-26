@@ -28,6 +28,11 @@ fc.object_counts("input.mp4", "output.mp4", line_map)
 # Display results
 # Example output: {"person": {"road": 2}, "car": {"road": 3}, "motorcycle": {}, "bus": {}, "truck": {}}
 print(fc.cls_counts)
+
+# Number of counted objects that crossed line2 before line1 (reverse direction), per line name.
+# Included in the counts above; use this to spot-check how much reverse-direction traffic
+# (e.g. oncoming lane) is being counted. Example output: {"road": 1}
+print(fc.reverse_crossings)
 ```
 
 ## License

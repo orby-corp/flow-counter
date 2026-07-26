@@ -40,12 +40,43 @@ class FlowCounter:
         # Track which lines each object has crossed.
         self.crossed_lines: dict[str, set[str]] = defaultdict(set)
 
+        # Track which side of a line pair (root_id, line_name) was crossed first,
+        # so line2 -> line1 (reverse-direction) crossings can be identified.
+        self.first_crossed_side: dict[tuple[str, str], str] = {}
+
+        # Count of reverse-direction crossings (line2 before line1), per line name.
+        self.reverse_crossings: dict[str, int] = {}
+
         # Dictionary to store class-wise counts. {vehicle: {line name: count}}
         self.cls_counts: dict[str, dict[str, int]] = {}
         for vehicle_name in self.counted_cls_names:
             self.cls_counts[vehicle_name] = {}
 
         self.uf = DictUnionFind()
+
+    def _merge_first_crossed_side(self, root_id1: str, root_id2: str, new_root: str) -> None:
+        """
+        Carry first_crossed_side records over to the new root produced by
+        unite(), mirroring the crossed_lines merge in Step2. If both old
+        roots recorded a first-crossed side for the same line_name, the
+        record under root_id1 wins arbitrarily, since there is no timestamp
+        to determine which crossing actually happened first.
+
+        :param root_id1: Root id of box_id1 before unite().
+        :param root_id2: Root id of box_id2 before unite().
+        :param new_root: Root id after unite().
+        """
+        line_names = {
+            line_name
+            for (root_id, line_name) in self.first_crossed_side
+            if root_id in (root_id1, root_id2)
+        }
+        for line_name in line_names:
+            side = (
+                self.first_crossed_side.get((root_id1, line_name))
+                or self.first_crossed_side.get((root_id2, line_name))
+            )
+            self.first_crossed_side[(new_root, line_name)] = side
 
     def _open_video(self, input_path: str) -> tuple[cv2.VideoCapture, int, tuple[int, int]]:
         """
@@ -111,18 +142,24 @@ class FlowCounter:
                     self.uf.unite(box_id1, root_id2)
                     new_root = self.uf.find(box_id1)
                     self.crossed_lines[new_root] = self.crossed_lines[root_id1] | self.crossed_lines[root_id2]
+                    self._merge_first_crossed_side(root_id1, root_id2, new_root)
                     self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
                     supression_flag = True
                 elif iou >= 0.5:
                     self.uf.unite(box_id1, root_id2)
                     new_root = self.uf.find(box_id1)
                     self.crossed_lines[new_root] = self.crossed_lines[root_id1] | self.crossed_lines[root_id2]
+                    self._merge_first_crossed_side(root_id1, root_id2, new_root)
                     self.counted_ids = set([self.uf.find(i) for i in self.counted_ids])
 
             # Step3: Check if object has crossed both lines
             if not supression_flag:
                 class_name = self.model.names[cls_id1]
                 root_id = self.uf.find(box_id1)
+
+                # Record which side of the line pair was crossed first (issue #1 cause 1).
+                if (root_id, line_name) not in self.first_crossed_side:
+                    self.first_crossed_side[(root_id, line_name)] = line_key
 
                 # Record which line this object has crossed
                 self.crossed_lines[root_id].add(line_key)
@@ -136,6 +173,10 @@ class FlowCounter:
                     count += 1
                     self.counted_ids.add(root_id)
                     self.cls_counts[class_name][line_name] = self.cls_counts[class_name].get(line_name, 0) + 1
+
+                    # line2 crossed before line1 means the object passed in reverse.
+                    if self.first_crossed_side[(root_id, line_name)] == f"{line_name}_2":
+                        self.reverse_crossings[line_name] = self.reverse_crossings.get(line_name, 0) + 1
         return count
     
     def _annotate_frame(self, frame: np.ndarray, line_map: dict[str, tuple[LINE, LINE]], counter: int) -> np.ndarray:
